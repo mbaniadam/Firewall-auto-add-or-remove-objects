@@ -54,7 +54,7 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
             for ip_with_mask in ip_list_validated:
                 print(" IP:", ip_with_mask)
                 #ip = remove_slash(ip_with_mask)
-                address_name = f"R_{ip_with_mask}"
+                address_name = convention+ip_with_mask
                 # then check address object existence
                 address_check = f"show logical-systems  security address-book untrust address {address_name}"
                 # then check address object existence in group
@@ -115,7 +115,7 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
             for ip_with_mask in ip_list_validated:
                 print(" IP:", ip_with_mask)
                 #ip = remove_slash(ip_with_mask)
-                address_name = f"R_{ip_with_mask}"
+                address_name = convention+ip_with_mask
                 # check address object existence
                 address_check = f'get address Untrust | include {address_name}'
                 # then check address object existence in group
@@ -229,7 +229,7 @@ def Delete_via_SSH(host, ip_list_validated,grp_name, convention):
             for ip_with_mask in ip_list_validated:
                 print(" IP:", ip_with_mask)
                 #ip = remove_slash(ip_with_mask)
-                address_name = f"R_{ip_with_mask}"
+                address_name = convention+ip_with_mask
                 # check address object existence
                 address_check = f'get address Untrust | include {address_name}'
                 # then check address object existence in group
@@ -309,9 +309,9 @@ def Config_via_API(host, ip_list_validated, grp_name, convention):
                 add_member_group_dict = dict()
                 add_member_group_dict["name"] = ip_dict["name"]
                 group_payload = json.dumps(add_member_group_dict)
-                url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/R_{ip}%2F{ip_mask}/?datasource=1&with_meta=1&"
+                url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{convention}{ip}%2F{ip_mask}/?datasource=1&with_meta=1&"
                 url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/"
-                url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/R_{ip}%2F{ip_mask}"
+                url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{convention}{ip}%2F{ip_mask}"
 
                 # Check existence of address in firewall address
                 print(" Looking in firewall addresses...")
@@ -377,7 +377,7 @@ def Delete_via_API(host, ip_list_validated, grp_name, convention):
                 ip_mask = ip_with_mask.split('/')[1]
                 # print(ip,ip_mask)
                 address_name = convention+ip_with_mask
-                #address_name = f"R_{ip_with_mask}"
+                #address_name = convention+ip_with_mask
                 print("------- Object:", address_name)
 
                 ip_dict = dict()
