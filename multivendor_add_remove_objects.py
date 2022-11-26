@@ -5,6 +5,7 @@ import ipaddress
 import requests
 import json
 import re
+import sys
 # import logging
 
 # logging.basicConfig(filename='netmiko_global.log', level=logging.DEBUG)
@@ -49,7 +50,7 @@ def valiadate_ip(ip):
         print(" IP address is not valid!")
 
 
-def Config_via_SSH(host, ip_list_validated, grp_name):
+def Config_via_SSH(host, ip_list_validated, grp_name, logical_system, zone_name):
     print("**************************** Add via SSH ****************************")
     try:
         if host["device_type"] == "juniper_junos":
@@ -57,8 +58,29 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
             juniper_junos = ConnectHandler(**host)
             count = 0
             changed = False
-            # First check if group name is correct or exist
-            group_check = f"show configuration logical-systems  security address-book -untrust | match {grp_name}"
+            # Check existense of security zone
+            zone_check = f"show configuration logical-systems {logical_system} security zones | match {zone_name}"
+            zone_check_result = juniper_junos.send_command(
+                zone_check, expect_string=r">", read_timeout=20)
+            # print(zone_check_result)
+            while f"security-zone {zone_name} " not in zone_check_result:
+                if zone_name in zone_check_result:
+                    if word_count(zone_name, zone_check_result) > 1:
+                        print(zone_check_result)
+                        zone_name = str(
+                            input(" Multiple zone founded!\n Enter correct zone: "))
+                    else:
+                        print(zone_check_result)
+                        zone_name = str(zone_check_result.split()[1])
+                else:
+                    print(zone_check_result)
+                    print(f" Zone name {zone_name} not found!")
+                    zone_name = str(input(" Enter correct zone: "))
+                zone_check_result = juniper_junos.send_command(
+                    f"show configuration logical-systems {logical_system} security zones | match {zone_name}", expect_string=r">", read_timeout=20)
+                print(f" Zone name: {zone_name}")
+            # Check if group name is correct or exist
+            group_check = f"show configuration logical-systems {logical_system} security address-book {zone_name} | match {grp_name}"
             group_check_result = juniper_junos.send_command(
                 group_check, expect_string=r">", read_timeout=20)
             create_grp = "n"
@@ -77,9 +99,9 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
                     address_name = convention+ip_with_mask
                     print(f" ------- Object: {address_name}")
                     # then check address object existence
-                    address_check = f"show logical-systems  security address-book -untrust address {address_name}"
+                    address_check = f"show logical-systems {logical_system} security address-book {zone_name} address {address_name}"
                     # then check address object existence in group
-                    addr_group_check = f"show logical-systems  security address-book -untrust address-set {grp_name} | match {address_name}"
+                    addr_group_check = f"show logical-systems {logical_system} security address-book {zone_name} address-set {grp_name} | match {address_name}"
                     address_check_result = juniper_junos.send_config_set(
                         address_check, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
                     # print(address_check_result)
@@ -94,7 +116,7 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
                                 f" also in group: {grp_name}")
                         else:
                             # add address to group
-                            add_to_group_command = f"set logical-systems  security address-book -untrust address-set {grp_name} address {address_name}"
+                            add_to_group_command = f"set logical-systems {logical_system} security address-book {zone_name} address-set {grp_name} address {address_name}"
                             output = juniper_junos.send_config_set(
                                 add_to_group_command, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
                             # Check last command worked or not!
@@ -102,12 +124,12 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
                                 addr_group_check, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
                             if address_name in addr_group_check_result:
                                 print(f" Object added to group: {grp_name}")
-                                count += 1 
+                                count += 1
                                 changed = True
                     else:
-                        commands = [f"set logical-systems  security address-book -untrust address {address_name} {ip_with_mask}",
-                                    f"set logical-systems  security address-book -untrust address {address_name} description {comment}",
-                                    f"set logical-systems  security address-book -untrust address-set {grp_name} address {address_name}"]
+                        commands = [f"set logical-systems {logical_system} security address-book {zone_name} address {address_name} {ip_with_mask}",
+                                    f"set logical-systems {logical_system} security address-book {zone_name} address {address_name} description {comment}",
+                                    f"set logical-systems {logical_system} security address-book {zone_name} address-set {grp_name} address {address_name}"]
                         output = juniper_junos.send_config_set(
                             commands, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
                         # Check last command worked or not!
@@ -116,23 +138,40 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
                         if address_name in addr_group_check_result:
                             print(
                                 f" Object created and added to group: {grp_name}")
-                            count += 1 
+                            count += 1
                             changed = True
             if changed:
-                output = juniper_junos.commit(comment = "Add object by script")
+                output = juniper_junos.commit(comment="Add object by script")
                 if "commit complete" in output:
                     print("\n>>> commit complete")
                 else:
                     print(output)
-            print(f"                                                      {count} Object added!")
+            print(
+                f"                                                      {count} Object added!")
+            juniper_junos.disconnect()
         # ScreenOS ------------------------------------------------------------------
         elif host["device_type"] == "juniper_screenos":
             print(f">>> Looking in {host['host']} juniper_screenos...")
             juniper_screenos = ConnectHandler(**host)
             changed = False
             count = 0
+            # Check existense of security zone
+            zone_check = f"get zone {zone_name}"
+            get_all_zone = "get zone"
+            zone_check_result = juniper_screenos.send_command(
+                zone_check, expect_string=r">", read_timeout=20)
+            # print(zone_check_result)
+            while f"Zone name: {zone_name}" not in zone_check_result:
+                print(" Zone name not found!")
+                get_all_zone_result = juniper_screenos.send_command(
+                    get_all_zone, expect_string=r">", read_timeout=20)
+                print(get_all_zone_result)
+                zone_name = str(input(" Enter correct zone: "))
+                zone_check_result = juniper_screenos.send_command(
+                    f"get zone {zone_name}", expect_string=r">", read_timeout=20)
+            print(f" Zone name: {zone_name}")
             # First check if group name is correct or exist
-            group_check = f'get group address Untrust {grp_name}'
+            group_check = f'get group address {zone_name} {grp_name}'
             group_check_result = juniper_screenos.send_command(
                 group_check, expect_string=r">", read_timeout=20)
             create_grp = "n"
@@ -149,21 +188,21 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
                     address_name = convention+ip_with_mask
                     print(" ------- Object:", address_name)
                     # check address object existence
-                    address_check = f'get address Untrust | include {address_name}'
+                    address_check = f'get address {zone_name} | include {address_name}'
                     # then check address object existence in group
-                    addr_group_check = f'get group address Untrust {grp_name} | include {address_name}'
+                    addr_group_check = f'get group address {zone_name} {grp_name} | include {address_name}'
                     address_check_result = juniper_screenos.send_command(
                         address_check, expect_string=r">")
-                    add_to_group_command = f'set group address Untrust {grp_name} add {address_name}'
+                    add_to_group_command = f'set group address {zone_name} {grp_name} add {address_name}'
                     add_to_group_result = juniper_screenos.send_command(
                         add_to_group_command, expect_string=r">")
                     if "Duplicate group member" in add_to_group_result:
                         print("Duplicate group member")
                     elif "Not found" in add_to_group_result:
                         # create address and add to group
-                        commands = f"set address Untrust {address_name} {ip_with_mask} {comment}"
+                        commands = f"set address {zone_name} {address_name} {ip_with_mask} {comment}"
                         output = juniper_screenos.send_command_timing(commands)
-                        commands = f"set group address Untrust {grp_name} add {address_name}"
+                        commands = f"set group address {zone_name} {grp_name} add {address_name}"
                         output = juniper_screenos.send_command_timing(commands)
                         final_address_check_result = juniper_screenos.send_command(
                             address_check, expect_string=r">")
@@ -172,25 +211,27 @@ def Config_via_SSH(host, ip_list_validated, grp_name):
                         if final_group_check_result and final_address_check_result:
                             print(
                                 f" Object created and added to group: {grp_name}")
-                            count += 1 
+                            count += 1
                             changed = True
                     elif add_to_group_result:
                         print(add_to_group_result)
                     else:
                         print(f" Object added to group: {grp_name}")
-                        count += 1 
+                        count += 1
                         changed = True
             if changed:
                 output = juniper_screenos.save_config()
                 print(output)
-            print(f"                                                      {count} Object added!")
+            print(
+                f"                                                      {count} Object added!")
+            juniper_screenos.disconnect()
     except NetmikoTimeoutException:
         print('Connection timed out')
     except NetmikoAuthenticationException:
         print('Authentication failed')
 
 
-def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
+def Remove_via_SSH(host, ip_list_validated, grp_name, convention, logical_system, zone_name):
     print("**************************** Remove via SSH ****************************")
     try:
         if host["device_type"] == "juniper_junos":
@@ -198,8 +239,29 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
             juniper_junos = ConnectHandler(**host)
             changed = False
             count = 0
+            # Check existense of security zone
+            zone_check = f"show configuration logical-systems {logical_system} security zones | match {zone_name}"
+            zone_check_result = juniper_junos.send_command(
+                zone_check, expect_string=r">", read_timeout=20)
+            # print(zone_check_result)
+            while f"security-zone {zone_name} " not in zone_check_result:
+                if zone_name in zone_check_result:
+                    if word_count(zone_name, zone_check_result) > 1:
+                        print(zone_check_result)
+                        zone_name = str(
+                            input(" Multiple zone founded!\n Enter correct zone: "))
+                    else:
+                        print(zone_check_result)
+                        zone_name = str(zone_check_result.split()[1])
+                else:
+                    print(zone_check_result)
+                    print(f" Zone name {zone_name} not found!")
+                    zone_name = str(input(" Enter correct zone: "))
+                zone_check_result = juniper_junos.send_command(
+                    f"show configuration logical-systems {logical_system} security zones | match {zone_name}", expect_string=r">", read_timeout=20)
+                print(f" Zone name: {zone_name}")
             # First check if group name is correct or exist
-            group_check = f"show configuration logical-systems  security address-book -untrust | match {grp_name}"
+            group_check = f"show configuration logical-systems {logical_system} security address-book {zone_name} | match {grp_name}"
             group_check_result = juniper_junos.send_command(
                 group_check, expect_string=r">", read_timeout=20)
             if f"address-set {grp_name}" not in group_check_result:
@@ -209,11 +271,11 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
                     address_name = convention+ip_with_mask
                     print(f" ------- Object: {address_name}")
                     # then check address object existence
-                    address_check = f"show logical-systems  security address-book -untrust address {address_name}"
+                    address_check = f"show logical-systems {logical_system} security address-book {zone_name} address {address_name}"
                     # then check address object existence in group
-                    addr_group_check = f"show logical-systems  security address-book -untrust address-set {grp_name} | match {address_name}"
+                    addr_group_check = f"show logical-systems {logical_system} security address-book {zone_name} address-set {grp_name} | match {address_name}"
                     # for check if address is last object in group or not!
-                    check_last_member = f"show logical-systems  security address-book -untrust address-set {grp_name}"
+                    check_last_member = f"show logical-systems {logical_system} security address-book {zone_name} address-set {grp_name}"
                     address_check_result = juniper_junos.send_config_set(
                         address_check, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
                     # print(address_check_result)
@@ -231,7 +293,7 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
                             # print(check_last_member_result)
                             if word_count(";", check_last_member_result) > 1:
                                 # delete address from group
-                                del_from_group_command = f"delete logical-systems  security address-book -untrust address-set {grp_name} address {address_name}"
+                                del_from_group_command = f"delete logical-systems {logical_system} security address-book {zone_name} address-set {grp_name} address {address_name}"
                                 # print(del_from_group_command)
                                 output = juniper_junos.send_config_set(
                                     del_from_group_command, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
@@ -253,7 +315,8 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
                     else:
                         print(f" Object not found!")
                 if changed:
-                    output = juniper_junos.commit(comment= "Removed object by script")
+                    output = juniper_junos.commit(
+                        comment="Removed object by script")
                     if "commit complete" in output:
                         print("\n>>> commit complete")
                     else:
@@ -264,8 +327,23 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
             juniper_screenos = ConnectHandler(**host)
             changed = False
             count = 0
+            # Check existense of security zone
+            zone_check = f"get zone {zone_name}"
+            get_all_zone = "get zone"
+            zone_check_result = juniper_screenos.send_command(
+                zone_check, expect_string=r">", read_timeout=20)
+            # print(zone_check_result)
+            while f"Zone name: {zone_name}" not in zone_check_result:
+                print(" Zone name not found!")
+                get_all_zone_result = juniper_screenos.send_command(
+                    get_all_zone, expect_string=r">", read_timeout=20)
+                print(get_all_zone_result)
+                zone_name = str(input(" Enter correct zone: "))
+                zone_check_result = juniper_screenos.send_command(
+                    f"get zone {zone_name}", expect_string=r">", read_timeout=20)
+            print(f" Zone name: {zone_name}")
             # First check if group name is correct or exist
-            group_check = f'get group address Untrust {grp_name}'
+            group_check = f'get group address {zone_name} {grp_name}'
             group_check_result = juniper_screenos.send_command(
                 group_check, expect_string=r">", read_timeout=20)
             if "Cannot find group" in group_check_result:
@@ -274,7 +352,7 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
                 for ip_with_mask in ip_list_validated:
                     address_name = convention+ip_with_mask
                     print(" -------Object:", address_name)
-                    remove_from_group_cmd = f"unset group address Untrust {grp_name} remove {address_name}"
+                    remove_from_group_cmd = f"unset group address {zone_name} {grp_name} remove {address_name}"
                     remove_from_group_result = juniper_screenos.send_command(
                         remove_from_group_cmd, expect_string=r">")
                     if remove_from_group_result:
@@ -292,7 +370,8 @@ def Remove_via_SSH(host, ip_list_validated, grp_name, convention):
             if changed:
                 output = juniper_screenos.save_config()
                 print(output)
-        print(f"                                                      {count} Object removed!")
+        print(
+            f"                                                      {count} Object removed!")
     except NetmikoTimeoutException:
         print('Connection timed out')
     except NetmikoAuthenticationException:
@@ -367,7 +446,7 @@ def Config_via_API(host, ip_list_validated, grp_name, convention):
                     if response_addrgrp.ok:
                         print(
                             f" Object added to group: {grp_name}")
-                        count += 1           
+                        count += 1
                     else:
                         print(" ERROR! >>> adding to group")
                 else:
@@ -376,7 +455,8 @@ def Config_via_API(host, ip_list_validated, grp_name, convention):
         else:
             print(
                 f" ERROR! >>> Something went wrong!\n{response_grp_check.status_code}")
-        print(f"                                                      {count} Object added!")
+        print(
+            f"                                                      {count} Object added!")
     except requests.exceptions.RequestException as httpGetError:
         raise SystemExit(httpGetError)
 
@@ -450,57 +530,65 @@ def Remove_via_API(host, ip_list_validated, grp_name, convention):
         else:
             print(
                 f" ERROR!!! >>> Something went wrong!\n{response_grp_check.status_code}")
-        print(f"                                                      {count} Object removed!")
+        print(
+            f"                                                      {count} Object removed!")
     except requests.exceptions.RequestException as httpGetError:
         raise SystemExit(httpGetError)
 
 
 if __name__ == "__main__":
-    parsed_yaml = read_yaml()
-    user_choice = input("Choose an option: (1|2)\
-        \n 1: Add IP to group\n 2: Remove IP from group\n ")
-    print("\n Input file: IP_LIST.txt\n")
-    if not re.match("[1,2]", user_choice):
-        print("ERROR!!! Only 1 or 2 allowed!")
-    else:
-        if user_choice == "1":
-            print(" Set comment for new objects or leave it blank! |Default: Block-IP|")
-            comment = str(input(" Comment: ") or "Block-IP")
-            if comment == " ":
-                comment = "-"
-        grp_name = str(input("\n |Default: Grp-Blocked-Addresses|\n Enter Group name: ") or "Grp-Blocked-Addresses")  # "testapi"
-        get_convention = str(input("""\n    R for Block IPs\n    A for IP Ranges\n    S for Servers\n    C for Clients\n
-        \n |Default: R |\n Select type of objects: """) or "R")
-        if not re.match("^[R,A,C,S,r,a,c,s]*$", get_convention):
-            print("ERROR!!! Only letters R,A,C,S allowed!")
+    EXIT = "n"
+    while EXIT != "y":
+        parsed_yaml = read_yaml()
+        user_choice = input(
+            "\n 1: Add IP to group\n 2: Remove IP from group\nChoose an option:(1|2)")
+        print("\n Input file: IP_LIST.txt\n")
+        if not re.match("[1,2]", user_choice):
+            print("ERROR!!! Only 1 or 2 allowed!")
         else:
-            convention = get_convention.capitalize() + ("_")
-            with open("IP_LIST.txt", "r") as file:
-                ip_list = file.readlines()
-                ip_list_validated = []
-                for IP_line in ip_list:
-                    # remove \n from line
-                    ip_with_mask = IP_line.strip("\n")
-                    ip_validated = valiadate_ip(ip_with_mask)
-                    if ip_validated:
-                        ip_list_validated.append(ip_with_mask)
-                print("----------------------------------\nIP validation has finished process!\n----------------------------------")
-                for host in parsed_yaml["hosts"]:
-                    if "juniper" in host["device_type"]:
-                        ssh_host_dict = {}
-                        # ssh_host_dict.update(login_credentials)
-                        ssh_host_dict.update(host)
-                        if user_choice == "1":
-                            Config_via_SSH(
-                                ssh_host_dict, ip_list_validated, grp_name)
-                        elif user_choice == "2":
-                            Remove_via_SSH(ssh_host_dict, ip_list_validated,
-                                        grp_name, convention)
-                    elif host["device_type"] == "fortinet":
-                        if user_choice == "1":
-                            Config_via_API(host, ip_list_validated,
-                                        grp_name, convention)
-                        elif user_choice == "2":
-                            Remove_via_API(host, ip_list_validated,
-                                        grp_name, convention)
-        input("\nFinished! press Enter to exit!")
+            if user_choice == "1":
+                print(" Set comment for new objects or leave it blank! |Default: Block-IP|")
+                comment = str(input(" Comment: ") or "Block-IP")
+                if comment == " ":
+                    comment = "-"
+            grp_name = str(input("\n |Default: Grp-Blocked-Addresses|\n Enter Group name: ")
+                        or "Grp-Blocked-Addresses")  # "testapi"
+            zone_name = str(input("\n For Juniper firewalls enter Zone name: "))
+            logical_system = str(
+                input("\n Enter logical-systems name: "))
+            get_convention = str(input("""\n    R for Block IPs\n    A for IP Ranges\n    S for Servers\n    C for Clients\n
+            \n |Default: R |\n Select type of objects: """) or "R")
+            if not re.match("^[R,A,C,S,r,a,c,s]*$", get_convention):
+                print("ERROR!!! Only letters R,A,C,S allowed!")
+            else:
+                convention = get_convention.capitalize() + ("_")
+                with open("IP_LIST.txt", "r") as file:
+                    ip_list = file.readlines()
+                    ip_list_validated = []
+                    for IP_line in ip_list:
+                        # remove \n from line
+                        ip_with_mask = IP_line.strip("\n")
+                        ip_validated = valiadate_ip(ip_with_mask)
+                        if ip_validated:
+                            ip_list_validated.append(ip_with_mask)
+                    print(
+                        "----------------------------------\nIP validation has finished process!\n----------------------------------")
+                    for host in parsed_yaml["hosts"]:
+                        if "juniper" in host["device_type"]:
+                            ssh_host_dict = {}
+                            # ssh_host_dict.update(login_credentials)
+                            ssh_host_dict.update(host)
+                            if user_choice == "1":
+                                Config_via_SSH(
+                                    ssh_host_dict, ip_list_validated, grp_name, logical_system, zone_name)
+                            elif user_choice == "2":
+                                Remove_via_SSH(ssh_host_dict, ip_list_validated,
+                                            grp_name, convention, logical_system, zone_name)
+                        elif host["device_type"] == "fortinet":
+                            if user_choice == "1":
+                                Config_via_API(host, ip_list_validated,
+                                            grp_name, convention)
+                            elif user_choice == "2":
+                                Remove_via_API(host, ip_list_validated,
+                                            grp_name, convention)
+        EXIT = str(input("\n Finished! Exit?! (y/n) ") or "y")
