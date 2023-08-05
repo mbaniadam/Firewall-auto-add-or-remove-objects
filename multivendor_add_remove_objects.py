@@ -6,12 +6,17 @@ import requests
 import json
 import re
 import csv
+import os
 # import logging
 # logging.basicConfig(filename='netmiko_global.log', level=logging.DEBUG)
 # logger = logging.getLogger("netmiko")
+# With the __file__ and os.path functions, you can change the current directory to the directory containing the running script file
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+path = os.getcwd()
+print(path)
 
 
-def read_yaml(path="Add_Remove_IP\inventory.yml"):
+def read_yaml(path="inventory.yml"):
     with open(path) as f:
         yaml_content = yaml.safe_load(f.read())
         # print(yaml_content)
@@ -39,11 +44,11 @@ def is_host_in_subnet(subnet, ip):
 def valiadate_ip(ip):
     try:
         print(f"-------------------------\nChecking {ip} ...")
-        if "169.254" in ip or "0.0.0.0" in ip:
+        if ip == "169.254.0.0" or ip == "0.0.0.0/0":
             raise ValueError
         ip_interface = ipaddress.ip_interface(ip)
-        #ip_mask = ip_interface.with_netmask.split('/')[1]
-        #pref_len = ip_interface.with_prefixlen.split('/')[1]
+        # ip_mask = ip_interface.with_netmask.split('/')[1]
+        # pref_len = ip_interface.with_prefixlen.split('/')[1]
         if ip_interface:
             print(" IP:", ip, "is valid.")
             return str(ip_interface)
@@ -57,9 +62,7 @@ def Config_via_SSH(host, ip_dic_validated):
     try:
         if host["device_type"] == "juniper_junos":
             logical_system = str(
-                input(f"\n For Site:VL >>> VLBMC-Ls\
-                \n For Site:JH >>> RSPLG\n Default: RSPLG\n Enter logical-systems name for {host['host']} : ")
-                or "RSPLG")
+                input(f"\n Enter logical-systems name for {host['host']} : ")or "BMC")
             print(f">>> Looking in {host['host']} juniper_junos...")
             juniper_junos = ConnectHandler(**host)
             count = 0
@@ -88,10 +91,11 @@ def Config_via_SSH(host, ip_dic_validated):
             gateway_ip = gateway_check_result.split()[-1]
             print(f" Found default route via {gateway_ip}")
             for line in subnet_check_result.splitlines():
-                subnet4check =  line.split(" ")[-1]
+                subnet4check = line.split(" ")[-1]
                 subnet4check_v4 = ipaddress.ip_interface(subnet4check)
                 subnet4check_net = subnet4check_v4.network
-                subnet_checked = is_host_in_subnet(subnet4check_net,gateway_ip)
+                subnet_checked = is_host_in_subnet(
+                    subnet4check_net, gateway_ip)
                 if subnet_checked:
                     interface_of_gw = line.split(" ")[4]
                     vlan_of_gw = line.split(" ")[6]
@@ -99,9 +103,9 @@ def Config_via_SSH(host, ip_dic_validated):
                         if f"{interface_of_gw}.{vlan_of_gw}" in line:
                             zone_untrust = line.split()[6]
                             print(f" Zone Untrust is: {zone_untrust}")
-                            break           
+                            break
             for item in ip_dic_validated:
-                print("------- Address:",item)
+                print("------- Address:", item)
                 grp_name = ip_dic_validated[item][2]
                 zone_name = ""
                 ip_with_mask = item
@@ -111,7 +115,7 @@ def Config_via_SSH(host, ip_dic_validated):
                     address_name = founded_addr[0].split(" ")[7]
                     zone_name = founded_addr[0].split(" ")[5]
                     objects_dic.update(
-                        {ip_with_mask: [address_name, zone_name,grp_name]})
+                        {ip_with_mask: [address_name, zone_name, grp_name]})
                 else:
                     untrust_check = "1"
                     ip_without_cidr = ip_with_mask.split('/')[0]
@@ -124,7 +128,7 @@ def Config_via_SSH(host, ip_dic_validated):
                     interface = ""
                     vlan = ""
                     # subnet_checker(subnet_check_result,ip_without_cidr)
-                    #founded_addr = list(filter(lambda line: f" {ip_with_mask}" in line, subnet_check_result.splitlines()))
+                    # founded_addr = list(filter(lambda line: f" {ip_with_mask}" in line, subnet_check_result.splitlines()))
                     for line in subnet_check_result.splitlines():
                         # get subnet at end of the line
                         inet_address = line.split(" ")[10]
@@ -142,19 +146,19 @@ def Config_via_SSH(host, ip_dic_validated):
                             break
 
                     if untrust_check == "0":
-                        #zone_check = f"show configuration logical-systems {logical_system} security zones | match {interface}.{vlan} | display set "
+                        # zone_check = f"show configuration logical-systems {logical_system} security zones | match {interface}.{vlan} | display set "
                         for line in zone_check_result.splitlines():
                             if f"{interface}.{vlan}" in line:
                                 zone_name = line.split()[6]
                                 objects2create_dic.update(
-                                    {ip_without_cidr: [address_name_4new, zone_name, ip_with_mask, description,grp_name]})
+                                    {ip_without_cidr: [address_name_4new, zone_name, ip_with_mask, description, grp_name]})
                                 break
                                 # print(zone_name)
 
                     elif untrust_check == "1":
                         if gateway_check_result:
-                                objects2create_dic.update(
-                                    {ip_without_cidr: [address_name_4new, zone_untrust, ip_with_mask, description,grp_name]})
+                            objects2create_dic.update(
+                                {ip_without_cidr: [address_name_4new, zone_untrust, ip_with_mask, description, grp_name]})
                 # add exist object to group
             print(" Address Checking completed. Now add items to groups ...")
             print(" Adding existing object to groups ...")
@@ -166,7 +170,7 @@ def Config_via_SSH(host, ip_dic_validated):
                 # print(address_check_result)
                 # For junos we use ";" to determine correct input
                 # if object_existence == "y":
-                #print(" Object already exist!")
+                # print(" Object already exist!")
                 addr_group_check_result = juniper_junos.send_config_set(
                     addr_group_check, read_timeout=40, enter_config_mode=True, config_mode_command="configure private", exit_config_mode=False)
                 # print(addr_group_check_result)
@@ -188,7 +192,7 @@ def Config_via_SSH(host, ip_dic_validated):
                             f" Address {address_name} added to group: {grp_name}")
                         count += 1
                         changed = True
-            #print(" Creating addresses ...")
+            # print(" Creating addresses ...")
             for item in objects2create_dic:
                 address_name_4new = str(objects2create_dic[item][0])
                 zone_name_4new = str(objects2create_dic[item][1])
@@ -196,7 +200,7 @@ def Config_via_SSH(host, ip_dic_validated):
                 new_description = str(objects2create_dic[item][3]) or " "
                 grp_name = str(objects2create_dic[item][4])
                 # item_netmask = item.split("/")[1]
-                #print(" Creating objects and add to group ...")
+                # print(" Creating objects and add to group ...")
                 commands = [f"set logical-systems {logical_system} security address-book {zone_name_4new} address {address_name_4new} {item_ip}",
                             f"set logical-systems {logical_system} security address-book {zone_name_4new} address {address_name_4new} description {new_description}",
                             f"set logical-systems {logical_system} security address-book {zone_name_4new} address-set {grp_name} address {address_name_4new}",
@@ -210,7 +214,7 @@ def Config_via_SSH(host, ip_dic_validated):
                 if f"address {address_name_4new};" in output:
                     print(
                         f" Address {address_name_4new} created and added to group: {grp_name}")
-                    #count += 1
+                    # count += 1
                     number_of_created += 1
                     changed = True
             if changed:
@@ -315,7 +319,8 @@ def Config_via_SSH(host, ip_dic_validated):
                 elif add_to_group_result:
                     print(add_to_group_result)
                 else:
-                    print(f" Address {address_name} added to group: {grp_name}")
+                    print(
+                        f" Address {address_name} added to group: {grp_name}")
                     count += 1
                     changed = True
             for item in objects2create_dic:
@@ -356,9 +361,7 @@ def Remove_via_SSH(host, ip_dic_validated):
     try:
         if host["device_type"] == "juniper_junos":
             logical_system = str(
-                input(f"\n For Site:VL >>> VLBMC-Ls\
-                \n For Site:JH >>> RSPLG\n Default: RSPLG\n Enter logical-systems name for {host['host']} : ")
-                or "RSPLG")
+                input(f"\n Enter logical-systems name for {host['host']} : ")or "BMC")
             print(f">>> Looking in {host['host']} juniper_junos...")
             juniper_junos = ConnectHandler(**host)
             changed = False
@@ -383,9 +386,9 @@ def Remove_via_SSH(host, ip_dic_validated):
                     lambda line: f" {ip_with_mask}" in line, address_check_result.splitlines()))
                 if founded_addr:
                     address_name = founded_addr[0].split(" ")[7]
-                    #print(f" Address name: {address_name}")
+                    # print(f" Address name: {address_name}")
                     zone_name = founded_addr[0].split(" ")[5]
-                    #print(f" Zone name: {zone_name}")
+                    # print(f" Zone name: {zone_name}")
                     check_addr_in_grp_cmd = f"show logical-systems {logical_system} security address-book {zone_name} address-set {grp_name} | match {address_name}"
                     # For junos we use ";" to determine correct input
                     check_addr_in_grp_result = juniper_junos.send_config_set(
@@ -399,7 +402,7 @@ def Remove_via_SSH(host, ip_dic_validated):
                 address_name = str(objects_2remove_dic[item][0])
                 zone_name = str(objects_2remove_dic[item][1])
                 grp_name = str(objects_2remove_dic[item][2])
-                #print(f" ------- Object: {address_name}")
+                # print(f" ------- Object: {address_name}")
                 # for check if address is last object in group or not!
                 check_last_member = f"show logical-systems {logical_system} security address-book {zone_name} address-set {grp_name}"
                 # For junos we use ";" to determine correct input
@@ -482,7 +485,7 @@ def Remove_via_SSH(host, ip_dic_validated):
                 address_name = str(objects_dic[item][0])
                 zone_name = str(objects_dic[item][1])
                 grp_name = str(objects_dic[item][2])
-                #print(" ------- Object:", address_name)
+                # print(" ------- Object:", address_name)
                 # check address object existence
                 address_check = f'get address {zone_name} | include {address_name}'
                 # then check address object existence in group
@@ -495,7 +498,8 @@ def Remove_via_SSH(host, ip_dic_validated):
                 if remove_from_group_result:
                     print(remove_from_group_result)
                 else:
-                    print(f" Address {address_name} removed from group: {grp_name}")
+                    print(
+                        f" Address {address_name} removed from group: {grp_name}")
                     count += 1
                     changed = True
             if changed:
@@ -547,7 +551,7 @@ def Config_via_API(host, ip_dic_validated):
                 else:
                     address_name_pl = convention+ip
                     address_name = convention+ip
-                #print("------- Address:", address_name_pl)
+                # print("------- Address:", address_name_pl)
                 ip_dict = dict()
                 # baraye API bejaye slash %2F bayad bzarim
                 ip_dict["name"] = address_name_pl
@@ -562,15 +566,15 @@ def Config_via_API(host, ip_dic_validated):
                 url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/"
                 url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{address_name}"
                 # Check existence of address in firewall address
-                #print(" Looking in firewall addresses...")
+                # print(" Looking in firewall addresses...")
                 response_addr_check = requests.request(
                     "GET", url_address_check, verify=False, headers=headers, data=address_payload)
                 if response_addr_check:
                     number_of_exist_object += 1
-                    #rint(" Object already exist!")
+                    # rint(" Object already exist!")
                 else:
                     # Create Address
-                    #print(" Creating address:", ip_dict["name"])
+                    # print(" Creating address:", ip_dict["name"])
                     response_address = requests.request(
                         "POST", url_address, verify=False, headers=headers, data=address_payload)
                     if response_address.ok:
@@ -580,12 +584,12 @@ def Config_via_API(host, ip_dic_validated):
                         print(" ERROR!")
                 sleep(.3)
                 # Check existence of address in group
-                #print(" Looking in group:", grp_name, "...")
+                # print(" Looking in group:", grp_name, "...")
                 response_addr_in_group_check = requests.request(
                     "GET", url_addr_in_grp, verify=False, headers=headers)
                 # print(response_addr_in_group_check.content)
                 if response_addr_in_group_check.status_code == 200:
-                    #print(
+                    # print(
                     #    f" also in group: {grp_name} \n Nothing changed!")
                     duplicate_member += 1
                 elif response_addr_in_group_check.status_code == 404:
@@ -650,7 +654,7 @@ def Remove_via_API(host, ip_dic_validated):
                     address_name = convention+ip
                     address_name_pl = convention+ip
 
-                #print("------- Object:", address_name_pl)
+                # print("------- Object:", address_name_pl)
                 ip_dict = dict()
                 # baraye API bejaye slash %2F bayad bzarim
                 # for payload
@@ -662,15 +666,15 @@ def Remove_via_API(host, ip_dic_validated):
                 add_member_group_dict["name"] = ip_dict["name"]
                 group_payload = json.dumps(add_member_group_dict)
                 url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{address_name}"
-                #url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/"
+                # url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/"
                 url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{address_name}"
                 # Check existence of address in firewall address
-                #print(" Looking in firewall addresses...")
+                # print(" Looking in firewall addresses...")
                 response_addr_check = requests.request(
                     "GET", url_address_check, verify=False, headers=headers, data=address_payload)
                 if response_addr_check.status_code == 200:
                     # Check existence of address in group
-                    #print(" Looking in group:", grp_name, "...")
+                    # print(" Looking in group:", grp_name, "...")
                     response_addr_in_group_check = requests.request(
                         "GET", url_addr_in_grp, verify=False, headers=headers)
                     # print(response_addr_in_group_check.content)
@@ -705,6 +709,68 @@ def Remove_via_API(host, ip_dic_validated):
         raise SystemExit(httpGetError)
 
 
+def Sophos_API(host, ip_dic_validated):
+    print("**************************** Add via Sophos API ****************************")
+    print(">>> Looking in ", host["host"])
+    requests.packages.urllib3.disable_warnings()
+    count = 0
+    try:
+        device_ip = host["host"]
+        port = host["port"]
+        access_token = host["token"]
+        username_token = "api-admin"
+        number_of_created = 0
+        number_of_exist_object = 0
+        for item in ip_dic_validated:
+            print("------- Address:", item)
+            ip = item.split('/')[0]
+            ip_mask = item.split('/')[1]
+            subnet = ipaddress.IPv4Network(item).netmask
+            operation = "add"
+            convention = ip_dic_validated[item][0]
+            grp_name = ip_dic_validated[item][2]
+            if ip_mask == "32":
+                url_addrgrp = f'https://{device_ip}:{port}/webconsole/APIController?reqxml=<Request><Login><Username>{username_token}</Username><Password passwordform="encrypt">{access_token}</Password></Login><Set operation="{operation}"><IPHost><Name>{convention+ip}</Name><IPFamily>IPv4</IPFamily><HostType>IP</HostType><IPAddress>{ip}</IPAddress><HostGroupList><HostGroup>{grp_name}</HostGroup></HostGroupList></IPHost></Set></Request>'
+            else:
+                url_addrgrp = f'https://{device_ip}:{port}/webconsole/APIController?reqxml=<Request><Login><Username>{username_token}</Username><Password passwordform="encrypt">{access_token}</Password></Login><Set operation="{operation}"><IPHost><Name>{convention+item}</Name><IPFamily>IPv4</IPFamily><HostType>Network</HostType><IPAddress>{ip}</IPAddress><Subnet>{subnet}</Subnet><HostGroupList><HostGroup>{grp_name}</HostGroup></HostGroupList></IPHost></Set></Request>'
+
+            response_grp_check = requests.request(
+                "GET", url_addrgrp, verify=False)
+
+            if "Configuration applied successfully." in response_grp_check.text:
+                number_of_created += 1
+                print(
+                    f" Address {ip} added to group: {grp_name}")
+                count += 1
+            elif "Operation failed. Entity having same name already exists" in response_grp_check.text:
+                print(" Operation failed. Entity having same name already exists!")
+                number_of_exist_object += 1
+                operation = "update"
+                if ip_mask == "32":
+                    url_addrgrp = f'https://{device_ip}:{port}/webconsole/APIController?reqxml=<Request><Login><Username>{username_token}</Username><Password passwordform="encrypt">{access_token}</Password></Login><Set operation="{operation}"><IPHost><Name>{convention+ip}</Name><IPFamily>IPv4</IPFamily><HostType>IP</HostType><IPAddress>{ip}</IPAddress><HostGroupList><HostGroup>{grp_name}</HostGroup></HostGroupList></IPHost></Set></Request>'
+                else:
+                    url_addrgrp = f'https://{device_ip}:{port}/webconsole/APIController?reqxml=<Request><Login><Username>{username_token}</Username><Password passwordform="encrypt">{access_token}</Password></Login><Set operation="{operation}"><IPHost><Name>{convention+item}</Name><IPFamily>IPv4</IPFamily><HostType>Network</HostType><IPAddress>{ip}</IPAddress><Subnet>{subnet}</Subnet><HostGroupList><HostGroup>{grp_name}</HostGroup></HostGroupList></IPHost></Set></Request>'
+                response_grp_check = requests.request(
+                    "GET", url_addrgrp, verify=False)
+                if "Configuration applied successfully." in response_grp_check.text:
+                    print(
+                        f" Address {ip} added to group: {grp_name}")
+                    count += 1
+            elif "<Params>/IPHost/HostGroupList/HostGroup</Params>" in response_grp_check.text:
+                print(f" ERROR! >>> Maybe group {grp_name} not exist!")
+            else:
+                print(
+                    f" ERROR! >>> Something went wrong!\n{response_grp_check.text}")
+            sleep(.3)
+
+        print(
+            f"                                                      {count} Object added.")
+        print(
+            f"                                                      {number_of_created} Object created.")
+    except requests.exceptions.RequestException as httpGetError:
+        raise SystemExit(httpGetError)
+
+
 if __name__ == "__main__":
     EXIT = "n"
     while EXIT != "y":
@@ -717,7 +783,7 @@ if __name__ == "__main__":
         else:
             # grp_name = str(input("\n |Default: Grp-Blocked-Addresses|\n Enter Group name: ")
             #                or "testapi")  # "Grp-Blocked-Addresses")  # "testapi"
-            with open("Add_Remove_IP\IP_LIST.csv") as file:
+            with open("IP_LIST.csv") as file:
                 not_assigned_group = []
                 csvreader = csv.reader(file)
                 ip_dic_validated = {}
@@ -760,6 +826,10 @@ if __name__ == "__main__":
                             Config_via_API(host, ip_dic_validated)
                         elif user_choice == "2":
                             Remove_via_API(host, ip_dic_validated)
+                    elif host["device_type"] == "sophos":
+                        if user_choice == "1":
+                            Sophos_API(host, ip_dic_validated)
+
                 if not_assigned_group:
                     print(" These IP addresses has no group name assigned!")
                     for item in not_assigned_group:
