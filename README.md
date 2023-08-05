@@ -51,8 +51,11 @@ This CSV file will contain the IP addresses, their naming conventions, and the a
 Follow the given format in the example below:
 
 IP Address,Convention,Group
+
 192.168.1.10,Server_,Web-Servers
+
 10.0.2.20,Printer_,Office-Devices
+
 In this example, we add 192.168.1.10 with the name Server_192.168.1.10/32 to the Web-Servers group, and we add 10.0.2.20 with the name Printer_10.0.2.20/32 from the Office Devices group.
 
 **NOTE** 
