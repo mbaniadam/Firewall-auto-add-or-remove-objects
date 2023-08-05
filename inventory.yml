@@ -1,7 +1,4 @@
 ---
-vars:
-    username: test
-    password: test 
 hosts:
     - host: 192.168.1.100
       port: 22
@@ -19,5 +16,8 @@ hosts:
       port: 443
       device_type: fortinet
       token: "5c185xmn8r7zZNhtb1hsyQ6Gsthuhst6"
-    
-   
+       
+    - host: 172.19.1.12
+      port: 443
+      device_type: sophos
+      token: "656asx5aw86965xafhv29FA"
