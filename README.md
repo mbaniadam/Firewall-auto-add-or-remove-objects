@@ -53,8 +53,6 @@ Always backup your firewall configurations before running the script.
 Contributing
 We welcome contributions to improve this tool and add support for more firewall vendors. If you find any issues or have suggestions for enhancements, feel free to open an issue or submit a pull request.
 
-License
-This project is licensed under the MIT License.
 
 Disclaimer
 The authors of this tool are not responsible for any damage or loss caused by using this tool. Use it at your own risk and always verify the changes made to your firewall configurations.
