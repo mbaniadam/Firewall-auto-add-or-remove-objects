@@ -62,7 +62,9 @@ def Config_via_SSH(host, ip_dic_validated):
     try:
         if host["device_type"] == "juniper_junos":
             logical_system = str(
-                input(f"\n Enter logical-systems name for {host['host']} : ")or "BMC")
+                input(f"\n For VLISITE >>> MORICO-Ls\
+                \n For JMOSITEn >>> MORICO\n Default: MORICO\n Enter logical-systems name for {host['host']} : ")
+                or "MORICO")
             print(f">>> Looking in {host['host']} juniper_junos...")
             juniper_junos = ConnectHandler(**host)
             count = 0
@@ -361,7 +363,9 @@ def Remove_via_SSH(host, ip_dic_validated):
     try:
         if host["device_type"] == "juniper_junos":
             logical_system = str(
-                input(f"\n Enter logical-systems name for {host['host']} : ")or "BMC")
+                input(f"\n For VLISITE >>> MORICO-Ls\
+                \n For JMOSITEn >>> MORICO\n Default: MORICO\n Enter logical-systems name for {host['host']} : ")
+                or "MORICO")
             print(f">>> Looking in {host['host']} juniper_junos...")
             juniper_junos = ConnectHandler(**host)
             changed = False
@@ -771,19 +775,84 @@ def Sophos_API(host, ip_dic_validated):
         raise SystemExit(httpGetError)
 
 
+def Object_Depend(host, ip_dic_validated, result_file):
+    print("**************************** Find object depenedencies via API ****************************")
+    print(">>> Looking in ", host["host"])
+    requests.packages.urllib3.disable_warnings()
+    count = 0
+    try:
+        device_ip = host["host"]
+        port = host["port"]
+        access_token = host["token"]
+        headers = {"Authorization": "Bearer " + access_token, }
+        for item in ip_dic_validated:
+            print("------- Address:", item)
+            ip = item.split('/')[0]
+            ip_mask = item.split('/')[1]
+            subnet = str(ipaddress.IPv4Network(item).netmask)
+            url_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/address/?format=name|subnet&filter=subnet=="{ip} {subnet}"'
+            url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/?format=name|member"
+            # Get address name for exact matching in policy and groups
+            response_addr_check = requests.request(
+                "GET", url_addr, verify=False, headers=headers)
+            addressName = response_addr_check.json()["results"][0]["name"]
+            # Get all groups and search for address name
+            response_grp_check = requests.request(
+                "GET", url_addrgrp, verify=False, headers=headers)
+            founded_grp_list = []
+            for x in range(len(response_grp_check.json()["results"])):
+                for i in response_grp_check.json()["results"][x]["member"]:
+                    if i["name"] == addressName:
+                        founded_grp_list.append(response_grp_check.json()[
+                                                "results"][x]["name"])
+            print(founded_grp_list)
+            # Check source and destination address and group in policy
+            url_policy_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/?filter=srcaddr=@"{addressName}",dstaddr=@"{addressName}"&filter=status==enable'
+            result_url_policy_addr = requests.request(
+                "GET", url_policy_addr, verify=False, headers=headers)
+            # print(result_url_policy_addr.json()["results"])
+            for pid in result_url_policy_addr.json()["results"]:
+                pid_policyid = pid["policyid"]
+                pid_srcaddr= list(map(lambda x: x['name'], pid["srcaddr"]))
+                pid_dstaddr = list(map(lambda x: x['name'], pid["dstaddr"]))
+                pid_schedule = pid["schedule"]
+                pid_action = pid["action"]
+                pid_services = list(map(lambda x: x['name'], pid["service"]))
+                if addressName in pid_srcaddr or addressName in pid_dstaddr:
+                    result_file.writerow([pid_policyid,pid_srcaddr,pid_dstaddr,pid_services,pid_schedule,pid_action])
+                else:
+                    print(pid_dstaddr,pid_srcaddr)
+            for grp in founded_grp_list:
+                url_policy_grp = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/?filter=dstaddr=@"{grp}",srcaddr=@"{grp}"&filter=status==enable'
+                result_url_policy_grp = requests.request(
+                    "GET", url_policy_grp, verify=False, headers=headers)
+                for pid in result_url_policy_grp.json()["results"]:
+                    pid_policyid = pid["policyid"]
+                    pid_srcaddr= list(map(lambda x: x['name'], pid["srcaddr"]))
+                    pid_dstaddr = list(map(lambda x: x['name'], pid["dstaddr"]))
+                    pid_schedule = pid["schedule"]
+                    pid_action = pid["action"]
+                    pid_services = list(map(lambda x: x['name'], pid["service"]))
+                    result_file.writerow([pid_policyid,pid_srcaddr,pid_dstaddr,pid_services,pid_schedule,pid_action])
+            print(f"\n    Finished! you can see result in: {os.path.join(path, 'Dependencies_Result.csv')}")
+    except requests.exceptions.RequestException as httpGetError:
+        raise SystemExit(httpGetError)
+
+
 if __name__ == "__main__":
     EXIT = "n"
     while EXIT != "y":
         parsed_yaml = read_yaml()
         user_choice = input(
-            "\n 1: Add IP to group\n 2: Remove IP from group\nChoose an option:(1|2)")
+            "\n 1: Add IP to group\n 2: Remove IP from group\n 3: Find object dependencies\n Choose an option:( 1 | 2 | 3) ")
         print("\n Input file: IP_LIST.csv\n")
-        if not re.match("[1,2]", user_choice):
-            print("ERROR!!! Only 1 or 2 allowed!")
+        if not re.match("[1,2,3]", user_choice):
+            print("ERROR!!! Only 1, 2 or 3 allowed!")
         else:
-            # grp_name = str(input("\n |Default: Grp-Blocked-Addresses|\n Enter Group name: ")
-            #                or "testapi")  # "Grp-Blocked-Addresses")  # "testapi"
-            with open("IP_LIST.csv") as file:
+            with open("IP_LIST.csv") as file,\
+                    open("Dependencies_Result.csv", "w", newline='') as csv_result:
+                result_file = csv.writer(csv_result)
+                result_file.writerow(["policyid","srcaddr","dstaddr","services","schedule","action"])
                 not_assigned_group = []
                 csvreader = csv.reader(file)
                 ip_dic_validated = {}
@@ -826,6 +895,8 @@ if __name__ == "__main__":
                             Config_via_API(host, ip_dic_validated)
                         elif user_choice == "2":
                             Remove_via_API(host, ip_dic_validated)
+                        elif user_choice == "3":
+                            Object_Depend(host, ip_dic_validated, result_file)
                     elif host["device_type"] == "sophos":
                         if user_choice == "1":
                             Sophos_API(host, ip_dic_validated)
