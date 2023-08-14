@@ -775,66 +775,81 @@ def Sophos_API(host, ip_dic_validated):
         raise SystemExit(httpGetError)
 
 
+
 def Object_Depend(host, ip_dic_validated, result_file):
     print("**************************** Find object depenedencies via API ****************************")
     print(">>> Looking in ", host["host"])
     requests.packages.urllib3.disable_warnings()
-    count = 0
     try:
         device_ip = host["host"]
         port = host["port"]
         access_token = host["token"]
         headers = {"Authorization": "Bearer " + access_token, }
+        # Write header for device in csv file
+        result_file.writerow([host["host"]])
+        # Get all address
+        url_all_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/address/?format=name|subnet|type&filter=type==ipmask'
+        response_all_addr_check = requests.request(
+            "GET", url_all_addr, verify=False, headers=headers).json()["results"]
+        # get interfaces to find vlan of ip address
+        url_all_interfaces = f'https://{device_ip}:{port}/api/v2/cmdb/system/interface/?format=ip|name'
+        response_interface_check = requests.request(
+            "GET", url_all_interfaces, verify=False, headers=headers).json()["results"]
+        all_interfaces = list(
+            map(lambda x: {**x, "ip": x["ip"].replace(' ', '/')}, response_interface_check))
+        # Find subnets and replace space with slash in subnet value for use in subnet_of() function
+        all_subnet = list(map(lambda x: {
+                          **x, "subnet": x["subnet"].replace(' ', '/')}, response_all_addr_check))
+        # Get all groups
+        url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/?format=name|member"
+        response_grp_check = requests.request(
+            "GET", url_addrgrp, verify=False, headers=headers).json()["results"]
+        # Get all policies
+        url_all_policy = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/'
+        result_url_all_policy = requests.request(
+            "GET", url_all_policy, verify=False, headers=headers).json()["results"]
         for item in ip_dic_validated:
             print("------- Address:", item)
+            result_file.writerow(["------- Address:", item])    
             ip = item.split('/')[0]
-            ip_mask = item.split('/')[1]
-            subnet = str(ipaddress.IPv4Network(item).netmask)
-            url_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/address/?format=name|subnet&filter=subnet=="{ip} {subnet}"'
-            url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/?format=name|member"
-            # Get address name for exact matching in policy and groups
-            response_addr_check = requests.request(
-                "GET", url_addr, verify=False, headers=headers)
-            addressName = response_addr_check.json()["results"][0]["name"]
-            # Get all groups and search for address name
-            response_grp_check = requests.request(
-                "GET", url_addrgrp, verify=False, headers=headers)
             founded_grp_list = []
-            for x in range(len(response_grp_check.json()["results"])):
-                for i in response_grp_check.json()["results"][x]["member"]:
-                    if i["name"] == addressName:
-                        founded_grp_list.append(response_grp_check.json()[
-                                                "results"][x]["name"])
-            print(founded_grp_list)
+            subnet_check = list(
+                filter(lambda x: is_host_in_subnet(x["subnet"], item), all_subnet))
+            address_name = list(filter(lambda x: x["subnet"].split()[
+                                0] == ip, response_all_addr_check))[0]["name"]
+            # Add matched subnet with the ip address to the list
+            for sub in subnet_check:
+                founded_grp_list.append(sub["name"])
+            # find vlan of address
+            interface_check = list(
+                map(lambda x: [x["name"], x["ip"]] if is_host_in_subnet(x["ip"], item) else False, all_interfaces))
+            interface_check = list(filter(None, interface_check))[0][0]
+            # Count all groups and check address in every group
+            for x in range(len(response_grp_check)):
+                for i in response_grp_check[x]["member"]:
+                    if i["name"] == address_name:
+                        founded_grp_list.append(response_grp_check[x]["name"])
+            #print(founded_grp_list)
             # Check source and destination address and group in policy
-            url_policy_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/?filter=srcaddr=@"{addressName}",dstaddr=@"{addressName}"&filter=status==enable'
-            result_url_policy_addr = requests.request(
-                "GET", url_policy_addr, verify=False, headers=headers)
-            # print(result_url_policy_addr.json()["results"])
-            for pid in result_url_policy_addr.json()["results"]:
+            for pid in result_url_all_policy:
                 pid_policyid = pid["policyid"]
-                pid_srcaddr= list(map(lambda x: x['name'], pid["srcaddr"]))
-                pid_dstaddr = list(map(lambda x: x['name'], pid["dstaddr"]))
+                pid_srcaddr = list(map(lambda x: x["name"], pid["srcaddr"]))
+                pid_dstaddr = list(map(lambda x: x["name"], pid["dstaddr"]))
                 pid_schedule = pid["schedule"]
                 pid_action = pid["action"]
                 pid_services = list(map(lambda x: x['name'], pid["service"]))
-                if addressName in pid_srcaddr or addressName in pid_dstaddr:
-                    result_file.writerow([pid_policyid,pid_srcaddr,pid_dstaddr,pid_services,pid_schedule,pid_action])
-                else:
-                    print(pid_dstaddr,pid_srcaddr)
-            for grp in founded_grp_list:
-                url_policy_grp = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/?filter=dstaddr=@"{grp}",srcaddr=@"{grp}"&filter=status==enable'
-                result_url_policy_grp = requests.request(
-                    "GET", url_policy_grp, verify=False, headers=headers)
-                for pid in result_url_policy_grp.json()["results"]:
-                    pid_policyid = pid["policyid"]
-                    pid_srcaddr= list(map(lambda x: x['name'], pid["srcaddr"]))
-                    pid_dstaddr = list(map(lambda x: x['name'], pid["dstaddr"]))
-                    pid_schedule = pid["schedule"]
-                    pid_action = pid["action"]
-                    pid_services = list(map(lambda x: x['name'], pid["service"]))
-                    result_file.writerow([pid_policyid,pid_srcaddr,pid_dstaddr,pid_services,pid_schedule,pid_action])
-            print(f"\n    Finished! you can see result in: {os.path.join(path, 'Dependencies_Result.csv')}")
+                pid_srcint = pid["srcintf"][0]["name"]
+                pid_dstint = pid["dstintf"][0]["name"]
+                for grp in founded_grp_list:
+                    if grp == "all" and pid_action == "deny":
+                        continue
+                    elif (grp in pid_srcaddr or grp in pid_dstaddr)\
+                        and ((interface_check == pid_srcint or interface_check == pid_dstint or pid_srcint == "any")\
+                            or (interface_check == pid_srcint or interface_check == pid_dstint or pid_dstint == "any")):
+                        result_file.writerow(
+                            [pid_policyid, pid_srcaddr, pid_dstaddr, pid_srcint, pid_dstint, pid_services, pid_schedule, pid_action])
+        print(
+            f"\n    Finished! you can see result in: {os.path.join(path, 'Dependencies_Result.csv')}")
     except requests.exceptions.RequestException as httpGetError:
         raise SystemExit(httpGetError)
 
