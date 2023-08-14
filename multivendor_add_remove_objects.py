@@ -776,7 +776,7 @@ def Sophos_API(host, ip_dic_validated):
 
 
 
-def Object_Depend(host, ip_dic_validated, result_file):
+def Object_Depend(host, ip_list_validated, result_file):
     print("**************************** Find object depenedencies via API ****************************")
     print(">>> Looking in ", host["host"])
     requests.packages.urllib3.disable_warnings()
@@ -808,7 +808,7 @@ def Object_Depend(host, ip_dic_validated, result_file):
         url_all_policy = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/'
         result_url_all_policy = requests.request(
             "GET", url_all_policy, verify=False, headers=headers).json()["results"]
-        for item in ip_dic_validated:
+        for item in ip_list_validated:
             print("------- Address:", item)
             result_file.writerow(["------- Address:", item])    
             ip = item.split('/')[0]
@@ -864,13 +864,17 @@ if __name__ == "__main__":
         if not re.match("[1,2,3]", user_choice):
             print("ERROR!!! Only 1, 2 or 3 allowed!")
         else:
+            # grp_name = str(input("\n |Default: Grp-Blocked-Addresses|\n Enter Group name: ")
+            #                or "testapi")  # "Grp-Blocked-Addresses")  # "testapi"
             with open("IP_LIST.csv") as file,\
                     open("Dependencies_Result.csv", "w", newline='') as csv_result:
                 result_file = csv.writer(csv_result)
-                result_file.writerow(["policyid","srcaddr","dstaddr","services","schedule","action"])
+                result_file.writerow(
+                    ["policyid", "srcaddr", "dstaddr", "srcintf", "dstintf", "services", "schedule", "action"])
                 not_assigned_group = []
                 csvreader = csv.reader(file)
                 ip_dic_validated = {}
+                ip_list_validated = []
                 for IP_line in csvreader:
                     # remove \n from line
                     # print(IP_line[0])
@@ -881,7 +885,7 @@ if __name__ == "__main__":
                         ip_with_mask = ip_with_mask+"/32"
                     convention = IP_line[1]
                     description = IP_line[2] or " "
-                    if IP_line[3]:
+                    if IP_line[3] and user_choice != "3" :
                         grp_name = IP_line[3]
                         ip_validated = valiadate_ip(ip_with_mask)
                         if ip_validated:
@@ -889,6 +893,13 @@ if __name__ == "__main__":
                             # if ip_with_mask not in ip_dic_validated:
                             ip_dic_validated.update(
                                 {ip_with_mask: [convention, description, grp_name]})
+                    elif user_choice == "3":
+                        ip_validated = valiadate_ip(ip_with_mask)
+                        if ip_validated:
+                            # for duplicate items
+                            # if ip_with_mask not in ip_dic_validated:
+                            ip_list_validated.append(ip_with_mask)
+                                #{ip_with_mask: [convention, description, grp_name]})
                     else:
                         print(
                             f" Group not assigned for {ip_with_mask} in IP_LIST.csv")
@@ -911,12 +922,12 @@ if __name__ == "__main__":
                         elif user_choice == "2":
                             Remove_via_API(host, ip_dic_validated)
                         elif user_choice == "3":
-                            Object_Depend(host, ip_dic_validated, result_file)
+                            Object_Depend(host, ip_list_validated, result_file)
                     elif host["device_type"] == "sophos":
                         if user_choice == "1":
                             Sophos_API(host, ip_dic_validated)
 
-                if not_assigned_group:
+                if not_assigned_group and user_choice != "3":
                     print(" These IP addresses has no group name assigned!")
                     for item in not_assigned_group:
                         print(item)
