@@ -184,8 +184,6 @@ def add_via_ssh(host, ip_dic_validated):
             print(f" Found default route via {gateway_ip}")
             for line in subnet_check_result.splitlines():
                 subnet4check = line.split(" ")[-1]
-                # subnet4check_v4 = ipaddress.ip_interface(subnet4check)
-                # subnet4check_net = subnet4check_v4.network
                 subnet_checked = is_host_in_subnet(
                     subnet4check, gateway_ip)
                 if subnet_checked:
@@ -224,11 +222,7 @@ def add_via_ssh(host, ip_dic_validated):
                     # founded_addr = list(filter(lambda line: f" {ip_with_cidr}" in line, subnet_check_result.splitlines()))
                     for line in subnet_check_result.splitlines():
                         # get subnet at end of the line
-                        inet_address = line.split(" ")[10]
-                        # convert inet_address to ip address format
-                        inet_address_interface = ipaddress.ip_interface(
-                            inet_address)
-                        inet_address_net4 = inet_address_interface.network
+                        inet_address_net4 = line.split(" ")[10]
                         subnet_checked = is_host_in_subnet(
                             inet_address_net4, ip_without_cidr)
                         # print(subnet_checked)
@@ -382,9 +376,7 @@ def add_via_ssh(host, ip_dic_validated):
                     else:
                         address_name_4new = convention+ip_without_cidr
                     for interface_ip in interface_list:
-                        inet_address_interface = ipaddress.ip_interface(
-                            interface_ip[0])
-                        inet_address_net4 = inet_address_interface.network
+                        inet_address_net4 = interface_ip[0]
                         subnet_checked = is_host_in_subnet(
                             inet_address_net4, ip_with_cidr)
                         if subnet_checked:
