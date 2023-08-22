@@ -10,6 +10,8 @@ This Python script allows you to manage IP address objects in multi-vendor firew
 
 - Error handling and validation for existing address groups.
 
+- Find Fortinet policies related to an IP address.
+
 - IP validation.
 
 - Support multivendor firewalls
@@ -70,11 +72,13 @@ python3 multivendor_add_remove_objects.py
 ```
 The script will prompt you to choose the action you want to perform:
 
-Add IP address to an address group: If you choose this option, the script will read the IP_LIST.csv file and add the specified IP addresses to the corresponding firewall address groups.
+**Add IP address to an address group:** If you choose this option, the script will read the IP_LIST.csv file and add the specified IP addresses to the corresponding firewall address groups.
 
-Remove IP address from an address group: If you choose this option, the script will read the IP_LIST.csv file and remove the specified IP addresses from the respective firewall address groups.
+**Remove IP address from an address group:** If you choose this option, the script will read the IP_LIST.csv file and remove the specified IP addresses from the respective firewall address groups.
 
-Please ensure that the address groups mentioned in the IP_LIST.csv file already exist on your firewalls.
+**Find Fortinet Policies Related to an IP Address:** This option allows you to find policies related to an IP address in Fortinet products. The script will iterate through the IP_LIST.csv file and then send a GET request to the firewall API specified in the inventory.yml file to retrieve the policies associated with the specified IP address.
+
+Please ensure that the address groups mentioned in the IP_LIST.csv file already exist on your firewalls. If not, the script will display a message indicating that the address was not found and no policies could be retrieved."
 
 ### Important Notes
 The script checks the validity of all IP addresses before making changes to the firewalls. However, be cautious when using this tool, as it directly modifies the firewall address groups.
