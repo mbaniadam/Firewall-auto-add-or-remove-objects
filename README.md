@@ -1,4 +1,4 @@
-## Add or Remove IP addresses to address groups in multivendor firewalls
+## Add or Remove IP addresses to address groups in multivendor firewalls and Fortinet policy finder
 
 
 This Python script allows you to manage IP address objects in multi-vendor firewalls, including FortiGate, Juniper Junos, ScreenOS, and Sophos. It leverages Netmiko for SSH-based communication and uses REST API tokens for Sophos firewalls. The tool prompts you to enter your choice for either adding an IP address to an address group or removing an IP address from a group.
