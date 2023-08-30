@@ -6,6 +6,7 @@ communication and uses REST API tokens for Sophos firewalls. The tool prompts yo
 choice for either adding an IP address to an address group or removing an IP address from a group.
 """
 import os
+import sys
 import ipaddress
 import json
 import re
@@ -23,7 +24,7 @@ import yaml
 # With the __file__ and os.path functions, you can change the current directory to the directory containing the running script file
 
 
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(os.path.dirname(os.path.abspath(sys.argv[0])))
 path = os.getcwd()
 print(path)
 
@@ -152,9 +153,9 @@ def add_via_ssh(host, ip_dic_validated):
     try:
         if host["device_type"] == "juniper_junos":
             logical_system = str(
-                input(f"\n For VMOR >>> MORCO-Ls\
-                \n For JMOR >>> MORCO\n Default: MORCO\n Enter logical-systems name for {host['host']} : ")
-                or "MORCO")
+                input(f"\n For MORO >>> MORO-Ls\
+                \n For MOROJ >>> MORO\n Default: MORO\n Enter logical-systems name for {host['host']} : ")
+                or "MORO")
             print(f">>> Looking in {host['host']} juniper_junos...")
             juniper_junos = ConnectHandler(**host)
             count = 0
@@ -463,9 +464,9 @@ def remove_via_ssh(host, ip_dic_validated):
     try:
         if host["device_type"] == "juniper_junos":
             logical_system = str(
-                input(f"\n For VMOR >>> MORCO-Ls\
-                \n For JMOR >>> MORCO\n Default: MORCO\n Enter logical-systems name for {host['host']} : ")
-                or "MORCO")
+                input(f"\n For MORO >>> MORO-Ls\
+                \n For MOROJ >>> MORO\n Default: MORO\n Enter logical-systems name for {host['host']} : ")
+                or "MORO")
             print(f">>> Looking in {host['host']} juniper_junos...")
             juniper_junos = ConnectHandler(**host)
             changed = False
@@ -633,6 +634,10 @@ def add_via_api(host, ip_dic_validated):
     number_of_exist_object = 0
     gp_not_exist_count = 0
     gp_not_exist = []
+    if host["vdom"]:
+        host_vdom = f'?vdom={host["vdom"]}'
+    else:
+        host_vdom = ""
     for values, _ in ip_dic_validated.items():
         print("------- Address:", values)
         ip = values.split('/')[0]
@@ -640,7 +645,7 @@ def add_via_api(host, ip_dic_validated):
         convention = ip_dic_validated[values][0]
         comment = ip_dic_validated[values][1]
         grp_name = ip_dic_validated[values][2]
-        url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/"
+        url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{host_vdom}"
         response_grp_check = make_api_request(url_addrgrp, "GET", headers)
         # Check existence of Group
         if response_grp_check.status_code == 404:
@@ -666,9 +671,9 @@ def add_via_api(host, ip_dic_validated):
             add_member_group_dict = dict()
             add_member_group_dict["name"] = ip_dict["name"]
             add_to_group_payload = json.dumps(add_member_group_dict)
-            url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{address_name}"
-            url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/"
-            url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{address_name}"
+            url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{address_name}/{host_vdom}"
+            url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{host_vdom}"
+            url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{address_name}/{host_vdom}"
             # Check existence of address in firewall address
             # print(" Looking in firewall addresses...")
             response_addr_check = make_api_request(
@@ -709,10 +714,10 @@ def add_via_api(host, ip_dic_validated):
                         f" ERROR! >>> adding to group {response_add_addr.status_code, response_add_addr.reason}")
             else:
                 print(
-                    f" ERROR! >>> something went wrong!\n{response_addr_in_group_check.status_code}")
+                    f" ERROR! >>> something went wrong!\n{response_addr_in_group_check.status_code,response_addr_in_group_check.reason}")
         else:
             print(
-                f" ERROR! >>> something went wrong!\n{response_grp_check.status_code}")
+                f" ERROR! >>> something went wrong!\n{response_grp_check.status_code, response_grp_check.reason}")
             break
     print(
         f"                                                      {count} Object added.")
@@ -752,11 +757,15 @@ def remove_via_api(host, ip_dic_validated):
     port = host["port"]
     access_token = host["token"]
     headers = {"Authorization": "Bearer " + access_token, }
+    if host["vdom"]:
+        host_vdom = f'?vdom={host["vdom"]}'
+    else:
+        host_vdom = ""
     for values, _ in ip_dic_validated.items():
         print("------- Address:", values)
         convention = ip_dic_validated[values][0]
         grp_name = ip_dic_validated[values][2]
-        url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/"
+        url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{host_vdom}"
         response_grp_check = make_api_request(url_addrgrp, "GET", headers)
         # Check existence of Group
         if response_grp_check.status_code == 404:
@@ -784,9 +793,9 @@ def remove_via_api(host, ip_dic_validated):
             add_member_group_dict = dict()
             add_member_group_dict["name"] = ip_dict["name"]
             remove_from_group_payload = json.dumps(add_member_group_dict)
-            url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{address_name}"
+            url_address_check = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/{address_name}/{host_vdom}"
             # url_address = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/address/"
-            url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{address_name}"
+            url_addr_in_grp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/{grp_name}/member/{address_name}/{host_vdom}"
             # Check existence of address in firewall address
             # print(" Looking in firewall addresses...")
             response_addr_check = make_api_request(
@@ -818,10 +827,10 @@ def remove_via_api(host, ip_dic_validated):
                         f" ERROR!!! >>> something went wrong!\n{response_addr_in_group_check.status_code}")
             else:
                 print(
-                    f" ERROR!!! >>> address not found! {response_addr_check.status_code}")
+                    f" ERROR!!! >>> address not found! {response_addr_check.status_code,response_addr_check.reason}")
         else:
             print(
-                f" ERROR!!! >>> something went wrong!\n{response_grp_check.status_code}")
+                f" ERROR!!! >>> something went wrong!\n{response_grp_check.status_code, response_grp_check.reason}")
             break
     print(
         f"                                                      {count} Object removed!"
@@ -901,7 +910,6 @@ def add_via_sophos_api(host, ip_dic_validated):
         f"                                                      {number_of_created} Object created.")
 
 
-def forti_policy_finder(host, ip_list_validated, result_file):
     """
     Find object dependencies via Fortinet FortiGate API.
 
@@ -1042,6 +1050,145 @@ def forti_policy_finder(host, ip_list_validated, result_file):
                 {os.path.join(path, 'Dependencies_Result.csv')}")
 
 
+def forti_policy_finder(host, ip_list_validated, result_file):
+    """
+    Find object dependencies via Fortinet FortiGate API.
+
+    This function takes a host configuration, a list of validated IP addresses,
+    and a result file for generating the output. It analyzes network policies
+    on a FortiGate device, identifying address dependencies, address groups,
+    interfaces, and policies related to the given IP addresses.
+
+    Parameters:
+    host (dict): A dictionary containing host configuration details including
+                 'host', 'port', and 'token' for API access.
+    ip_list_validated (list): A list of validated IP addresses (with CIDR notation)
+                             to analyze for dependencies.
+    result_file (CSV writer): A CSV writer object to write the results.
+
+    Returns:
+    None: This function generates output in the provided result_file.
+
+    Raises:
+    SystemExit: If there's a RequestException during API calls to the FortiGate device.
+
+    """
+    print("**************************** Find policies via API ****************************")
+    print(">>> Looking in ", host["host"])
+    urllib3.disable_warnings()
+
+    device_ip = host["host"]
+    port = host["port"]
+    access_token = host["token"]
+    headers = {"Authorization": "Bearer " + access_token, }
+    # Write header for device in csv file
+    result_file.writerow([host["host"]])
+    # Get all address
+    url_all_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/address/?format=name|subnet|type&filter=type==ipmask'
+    response_all_addr_check = make_api_request(
+        url_all_addr, "GET", headers).json()["results"]
+    # get interfaces to find vlan of ip address
+    url_all_interfaces = f'https://{device_ip}:{port}/api/v2/cmdb/system/interface/?format=ip|name'
+    response_interface_check = make_api_request(
+        url_all_interfaces, "GET", headers).json()["results"]
+    all_interfaces = list(
+        map(lambda x: {**x, "ip": x["ip"].replace(' ', '/')}, response_interface_check))
+    # Find zones
+    url_all_zones = f'https://{device_ip}:{port}/api/v2/cmdb/system/zone/?format=name|interface'
+    response_zone_check = make_api_request(
+        url_all_zones, "GET", headers).json()["results"]
+    # Find subnets and replace space with slash in subnet value for use in subnet_of() function
+    all_subnet = list(map(lambda x: {
+        **x, "subnet": x["subnet"].replace(' ', '/')}, response_all_addr_check))
+    # Get all groups
+    url_addrgrp = f"https://{device_ip}:{port}/api/v2/cmdb/firewall/addrgrp/?format=name|member"
+    response_grp_check = make_api_request(
+        url_addrgrp, "GET", headers).json()["results"]
+    # Get all policies
+    url_all_policy = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/policy/'
+    result_url_all_policy = make_api_request(
+        url_all_policy, "GET", headers).json()["results"]
+    for ip_with_cidr in ip_list_validated:
+        print("------- Address:", ip_with_cidr)
+        result_file.writerow(["------- Address:", ip_with_cidr])
+        ip_without_cidr = ip_with_cidr.split('/')[0]
+        founded_grp_list = []
+        subnet_check = list(
+            filter(lambda x, ip_addr_l=ip_with_cidr: is_host_in_subnet(x["subnet"], ip_addr_l), all_subnet))
+        filtered_addresses = list(filter(lambda x, ip_addr_l=ip_without_cidr: x["subnet"].split()[
+            0] == ip_addr_l, response_all_addr_check))
+        if filtered_addresses:
+            address_name = filtered_addresses[0]["name"]
+        else:
+            address_name = None
+        # Count all groups and check address in every group
+        for res_group in response_grp_check:
+            for member in res_group["member"]:
+                if res_group["name"] not in founded_grp_list and member["name"] == address_name:
+                    founded_grp_list.append(res_group["name"])
+                # founded_grp_list.append(subnet['name'] for subnet in subnet_check if subnet['name'] == member["name"])
+                for subnet in subnet_check:
+                    if res_group["name"] not in founded_grp_list and subnet['name'] == member["name"]:
+                        founded_grp_list.append(res_group["name"])
+        # Add matched subnet name with the ip address to the list
+        for subnet in subnet_check:
+            founded_grp_list.append(subnet['name'])
+        # find vlan of address
+        interface_check = list(
+            map(lambda x, ip_addr_l=ip_with_cidr: [x["name"], x["ip"]] if
+                is_host_in_subnet(x["ip"], ip_addr_l) else False, all_interfaces))
+        filtered_interfaces_list = list(filter(None, interface_check))
+        filtered_zone = "unknown-zone"
+        filtered_interface = "unknown-int"
+        if filtered_interfaces_list:
+            filtered_interface = filtered_interfaces_list[0][0]
+            zones_with_interface = list(
+                map(
+                    lambda int_name: int_name["name"],
+                    filter(
+                        lambda int_name: any(
+                            filtered_interface in zone["interface-name"]
+                            for zone in int_name["interface"]
+                        ),
+                        response_zone_check,
+                    ),
+                )
+            )
+            if zones_with_interface:
+                filtered_zone = zones_with_interface[0]
+        # print(founded_grp_list)
+        # Check source and destination address and group in policy
+        for pid in result_url_all_policy:
+            pid_policyid = pid["policyid"]
+            pid_srcaddr = list(map(lambda x: x["name"], pid["srcaddr"]))
+            pid_dstaddr = list(map(lambda x: x["name"], pid["dstaddr"]))
+            pid_schedule = pid["schedule"]
+            pid_action = pid["action"]
+            pid_status = pid["status"]
+            pid_services = list(map(lambda x: x['name'], pid["service"]))
+            pid_srcint = list(map(lambda x: x["name"], pid["srcintf"]))
+            pid_dstint = list(map(lambda x: x["name"], pid["dstintf"]))
+            srcint_check = filtered_zone in pid_srcint or filtered_interface in pid_srcint
+            if pid_status == "enable":
+                for grp in founded_grp_list:
+                    srcaddr_check = grp in pid_srcaddr
+                    dstaddr_check = grp in pid_dstaddr
+                    if grp == "all" and pid_action == "deny":
+                        pass
+                    elif srcaddr_check and srcint_check:
+                        result_file.writerow([
+                            pid_policyid, ip_without_cidr, pid_dstaddr, pid_srcint,
+                            pid_dstint, pid_services, pid_schedule, pid_action
+                        ])
+                    elif dstaddr_check:
+                        result_file.writerow([
+                            pid_policyid, pid_srcaddr, ip_without_cidr, pid_srcint,
+                            pid_dstint, pid_services, pid_schedule, pid_action
+                        ])
+    print(
+        f"\n    Finished! you can see result in:\
+                {os.path.join(path, 'Dependencies_Result.csv')}")
+
 if __name__ == "__main__":
     EXIT_CODE = "n"
     while EXIT_CODE != "y":
@@ -1126,11 +1273,13 @@ if __name__ == "__main__":
                         if user_choice in action_map[device_type]:
                             action_function = action_map[device_type][user_choice]
                             if user_choice == "3" and device_type == "fortinet":
-                                action_function(host, ip_list_validated, result_file)
+                                action_function(
+                                    host, ip_list_validated, result_file)
                             else:
                                 action_function(host, ip_dic_validated)
                         else:
-                            print(f"Invalid choice for device type: {device_type}")
+                            print(
+                                f"Invalid choice for device type: {device_type}")
                     else:
                         print(f"Unsupported device type: {device_type}")
 
