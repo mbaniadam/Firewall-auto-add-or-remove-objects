@@ -1080,14 +1080,15 @@ def forti_policy_finder(host, ip_list_validated, result_file):
     device_ip = host["host"]
     port = host["port"]
     access_token = host["token"]
-    headers = {"Authorization": "Bearer " + access_token, }
+    headers = {"Authorization": "Bearer " + access_token, } 
     if host["vdom"]:
         and_host_vdom = f'&vdom={host["vdom"]}'
         host_vdom = f'?vdom={host["vdom"]}'
     else:
         and_host_vdom = ""
+        host_vdom = ""
     # Write header for device in csv file
-    result_file.writerow(f'------- Device: {host["host"]}')
+    result_file.writerow(["------- Device: ",host["host"]])
     # Get all address
     url_all_addr = f'https://{device_ip}:{port}/api/v2/cmdb/firewall/address/?format=name|subnet|type&filter=type==ipmask{and_host_vdom}'
     response_all_addr_check = make_api_request(
