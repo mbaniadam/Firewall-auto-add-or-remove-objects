@@ -634,10 +634,8 @@ def add_via_api(host, ip_dic_validated):
     number_of_exist_object = 0
     gp_not_exist_count = 0
     gp_not_exist = []
-    if host["vdom"]:
-        host_vdom = f'?vdom={host["vdom"]}'
-    else:
-        host_vdom = ""
+    vdom = host.get("vdom", "")
+    host_vdom = f'?vdom={vdom}' if vdom else ""
     for values, _ in ip_dic_validated.items():
         print("------- Address:", values)
         ip = values.split('/')[0]
@@ -757,10 +755,8 @@ def remove_via_api(host, ip_dic_validated):
     port = host["port"]
     access_token = host["token"]
     headers = {"Authorization": "Bearer " + access_token, }
-    if host["vdom"]:
-        host_vdom = f'?vdom={host["vdom"]}'
-    else:
-        host_vdom = ""
+    vdom = host.get("vdom", "")
+    host_vdom = f'?vdom={vdom}' if vdom else ""
     for values, _ in ip_dic_validated.items():
         print("------- Address:", values)
         convention = ip_dic_validated[values][0]
@@ -1080,13 +1076,10 @@ def forti_policy_finder(host, ip_list_validated, result_file):
     device_ip = host["host"]
     port = host["port"]
     access_token = host["token"]
-    headers = {"Authorization": "Bearer " + access_token, } 
-    if host["vdom"]:
-        and_host_vdom = f'&vdom={host["vdom"]}'
-        host_vdom = f'?vdom={host["vdom"]}'
-    else:
-        and_host_vdom = ""
-        host_vdom = ""
+    headers = {"Authorization": "Bearer " + access_token, }
+    vdom = host.get("vdom", "")
+    and_host_vdom = f'&vdom={vdom}' if vdom else ""
+    host_vdom = f'?vdom={vdom}' if vdom else ""
     # Write header for device in csv file
     result_file.writerow(["------- Device: ",host["host"]])
     # Get all address
