@@ -1036,11 +1036,6 @@ def add_via_sophos_api(host, ip_dic_validated):
                             pid_policyid, ip_without_cidr, pid_dstaddr, pid_srcint,
                             pid_dstint, pid_services, pid_schedule, pid_action
                         ])
-                    elif dstaddr_check:
-                        result_file.writerow([
-                            pid_policyid, pid_srcaddr, ip_without_cidr, pid_srcint,
-                            pid_dstint, pid_services, pid_schedule, pid_action
-                        ])
     print(
         f"\n    Finished! you can see result in:\
                 {os.path.join(path, 'Dependencies_Result.csv')}")
